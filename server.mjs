@@ -15,6 +15,16 @@ const MIN_LIQUIDITY = 10000; // USD
 const MAX_TOP10 = 60; // % of supply in personal wallets
 const DRY_RUN = process.env.DRY_RUN === '1'; // stops at the 402, pays nothing
 
+// Public demo limits. They reset each hour and protect the agent wallet and the RPC.
+const HOUR = 3600000;
+const uses = {};
+function limit(name, max, message) {
+  const now = Date.now();
+  uses[name] = (uses[name] || []).filter((t) => now - t < HOUR);
+  if (uses[name].length >= max) throw new Error(message);
+  uses[name].push(now);
+}
+
 const conn = new Connection(RPC, 'confirmed');
 const walletPath = process.env.AGENT_WALLET || 'agent-wallet.json';
 const agent = fs.existsSync(walletPath)
@@ -105,6 +115,7 @@ async function priceOf(url, body) {
 async function paidCall(url, body) {
   const { price } = await priceOf(url, body);
   if (DRY_RUN) return { dryRun: true, price, proof: null, data: null };
+  limit('paid', Number(process.env.PAID_PER_HOUR || 5), 'Demo limit reached: the agent has paid for 5 calls this hour. The chain check still works.');
   if (!x402) throw new Error('Agent wallet not found.');
   const r = await x402.fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await r.json();
@@ -160,6 +171,7 @@ const quotes = new Map(); // quote id -> quote waiting for the user
 
 const routes = {
   async '/api/check'({ mint, lamports, user }) {
+    limit('check', 120, 'Too many checks this hour. Try again later.');
     const coin = await readCoin(mint);
     if (!coin.passed) return { ...coin, spent: 0, quote: null };
     const paid = await paidCall(`${API}/quote`, quoteBody(mint, lamports, user));
@@ -179,6 +191,7 @@ const routes = {
   },
   async '/api/rpc'(body) {
     if (body.method !== 'sendTransaction') throw new Error('Only sendTransaction is allowed.');
+    limit('send', 30, 'Too many swaps this hour. Try again later.');
     const r = await fetch(RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return r.json();
   },

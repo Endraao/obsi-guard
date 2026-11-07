@@ -18,6 +18,7 @@ Each quote costs about $0.003 and settles on-chain in seconds. Paying per call o
 
 - The agent never holds your funds and never signs your swap.
 - One API call can't cost more than $0.02.
+- The public demo pays for at most 5 calls per hour.
 - Passing the checks does not make a coin safe. This is not financial advice.
 
 ## Run it
