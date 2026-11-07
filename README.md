@@ -49,6 +49,10 @@ Paid x402 call to the Swap.io Agent API: https://solscan.io/tx/2b1NRgCjDF6vodsgF
 
 Full run on mainnet, built by the agent and signed by the user: https://solscan.io/tx/5T3n8iUgf13PEJPtXB7GHo5a8t4LTD1yLs1PH3U7LQLXknaUhzii6kYQ3jgauu5JkirKnG3ZCYEkAoQpP5UnpPT7
 
+## Notes for judges
+
+The app and its on-chain checks were built during the hackathon. The Obsi character and brand come from my existing project, Chroma. In the demo video, the passed-coin screens replay the data from the real mainnet run linked above.
+
 ## License
 
 MIT
