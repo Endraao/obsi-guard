@@ -1,0 +1,4 @@
+node_modules
+agent-wallet.json
+*.log
+.env

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obsi Guard</title>
+<style>
+  :root { --c: #22d3ee; --r: #fb7185; --g: #34d399; --s: #a9b6c9; --l: rgba(255,255,255,.1); }
+  * { box-sizing: border-box; margin: 0; }
+  body { min-height: 100vh; padding: 40px 16px; background: #070b14; color: #f4f7fb; font: 16px/1.45 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 620px; margin: 0 auto; }
+  h1 { font-size: 34px; letter-spacing: -.5px; }
+  h1 span { color: var(--c); }
+  .sub { margin: 6px 0 24px; color: var(--s); }
+  .caixa { padding: 22px; border: 1px solid rgba(34,211,238,.28); border-radius: 18px; background: #0f1624; }
+  label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--s); }
+  input { width: 100%; padding: 12px 14px; border: 1px solid var(--l); border-radius: 12px; background: #070b14; color: #fff; font: inherit; }
+  button { width: 100%; margin-top: 16px; padding: 13px; border: 0; border-radius: 12px; background: var(--c); color: #04202a; font: 700 16px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .sec { display: flex; align-items: center; justify-content: center; gap: 10px; background: transparent; color: var(--c); border: 1px solid rgba(34,211,238,.4); margin-top: 8px; }
+  .sec img { width: 22px; height: 22px; border-radius: 6px; }
+  #resultado { margin-top: 18px; }
+  .linha { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid var(--l); }
+  .linha b { font-weight: 600; text-align: right; }
+  .ok { color: var(--g); }
+  .ruim { color: var(--r); }
+  .fim { margin-top: 12px; padding: 13px 15px; border-radius: 12px; font-weight: 600; }
+  .fim.parou { background: rgba(251,113,133,.12); color: var(--r); }
+  .fim.passou { background: rgba(52,211,153,.12); color: var(--g); }
+  a { color: var(--c); }
+  .pe { margin-top: 18px; font-size: 13px; color: var(--s); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Obsi <span>Guard</span></h1>
+  <p class="sub">Reads the coin first. Pays for a quote only if it passes. You sign every swap.</p>
+  <div class="caixa">
+    <div id="carteiras"><p class="pe">Looking for Solana wallets…</p></div>
+    <label for="moeda">Coin address (Solana)</label>
+    <input id="moeda" placeholder="Paste the mint address" autocomplete="off">
+    <label for="valor">Amount in SOL</label>
+    <input id="valor" value="0.001" inputmode="decimal">
+    <button id="verificar" disabled>Connect a wallet first</button>
+    <div id="resultado"></div>
+  </div>
+  <p class="pe">Limits: no call costs more than $0.02. This is not financial advice, and passing the checks does not make a coin safe.</p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let carteira = null; // endereço conectado
+  let conta = null;
+  let escolhida = null;
+  const achadas = [];
+
+  // Wallet Standard: MetaMask, Phantom e outras se apresentam por estes eventos.
+  const serve = (w) => w.chains?.includes('solana:mainnet') && w.features?.['standard:connect'] && w.features?.['solana:signTransaction'];
+  const mostrarCarteiras = () => {
+    const caixa = $('carteiras');
+    caixa.replaceChildren();
+    for (const w of achadas) {
+      const b = document.createElement('button');
+      b.className = 'sec';
+      const i = document.createElement('img');
+      i.src = w.icon;
+      i.alt = '';
+      b.append(i, `Connect ${w.name}`);
+      b.onclick = () => conectar(w, b).catch((e) => alert(e.message));
+      caixa.append(b);
+    }
+  };
+  const api = {
+    register: (...novas) => {
+      for (const w of novas) if (serve(w) && !achadas.some((x) => x.name === w.name)) achadas.push(w);
+      mostrarCarteiras();
+      return () => {};
+    },
+  };
+  window.addEventListener('wallet-standard:register-wallet', ({ detail }) => detail(api));
+  window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: api }));
+  setTimeout(() => {
+    if (!achadas.length) $('carteiras').querySelector('p').textContent = 'No Solana wallet found. In MetaMask, turn on a Solana account.';
+  }, 2000);
+
+  async function conectar(w, botao) {
+    const r = await w.features['standard:connect'].connect();
+    conta = r.accounts?.find((a) => a.chains?.includes('solana:mainnet')) || r.accounts?.[0];
+    if (!conta) throw new Error('This wallet has no Solana account.');
+    escolhida = w;
+    carteira = conta.address;
+    botao.textContent = `${w.name}: ${carteira.slice(0, 4)}…${carteira.slice(-4)}`;
+    $('verificar').disabled = false;
+    $('verificar').textContent = 'Check coin';
+  }
+  let total = 0;
+  const pede = async (url, corpo) => {
+    const r = await fetch(url, { method: 'POST', body: JSON.stringify(corpo) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  };
+  const solscan = (tx) => (tx ? ` <a href="https://solscan.io/tx/${encodeURIComponent(tx)}" target="_blank" rel="noopener">payment proof</a>` : '');
+  const linha = (nome, valor, classe = '') => {
+    const l = document.createElement('div');
+    l.className = 'linha';
+    const a = document.createElement('span');
+    a.textContent = nome;
+    const b = document.createElement('b');
+    b.textContent = valor;
+    b.className = classe;
+    l.append(a, b);
+    return l;
+  };
+  const aviso = (texto, classe, html = '') => {
+    const d = document.createElement('div');
+    d.className = `fim ${classe}`;
+    d.textContent = texto;
+    if (html) d.insertAdjacentHTML('beforeend', html);
+    $('resultado').append(d);
+  };
+
+  $('verificar').onclick = async () => {
+    const botao = $('verificar');
+    const lamports = Math.round(Number($('valor').value) * 1e9);
+    if (!lamports) return alert('Enter an amount.');
+    botao.disabled = true;
+    botao.textContent = 'Reading the chain…';
+    $('resultado').replaceChildren();
+    total = 0;
+    try {
+      const d = await pede('/api/check', { mint: $('moeda').value.trim(), lamports, user: carteira });
+      for (const c of d.checks) $('resultado').append(linha(c.name, c.detail, c.ok ? 'ok' : 'ruim'));
+      total += d.spent || 0;
+      if (!d.passed) aviso('Stopped. Danger signs found. Spent on quotes: $0.00', 'parou');
+      else if (d.dryRun) aviso(`Passed. Dry run: the quote would cost $${d.price.toFixed(4)}.`, 'passou');
+      else if (!d.quote) aviso('Passed, but no route was found.', 'parou');
+      else {
+        aviso(`Passed. Paid $${d.spent.toFixed(4)} for a quote via ${d.quote.route}.`, 'passou', solscan(d.proof));
+        const b = document.createElement('button');
+        b.textContent = 'Build swap and sign in my wallet';
+        b.onclick = () => assinar(d.quote.id, b);
+        $('resultado').append(b);
+      }
+    } catch (e) {
+      aviso(e.message, 'parou');
+    }
+    botao.disabled = false;
+    botao.textContent = 'Check coin';
+  };
+
+  async function assinar(id, b) {
+    b.disabled = true;
+    try {
+      const d = await pede('/api/build', { id, user: carteira });
+      total += d.spent;
+      const bytes = Uint8Array.from(atob(d.transaction), (c) => c.charCodeAt(0));
+      const [assinada] = await escolhida.features['solana:signTransaction'].signTransaction({ account: conta, chain: 'solana:mainnet', transaction: bytes });
+      const em64 = btoa(String.fromCharCode(...assinada.signedTransaction));
+      const r = await pede('/api/rpc', { jsonrpc: '2.0', id: 1, method: 'sendTransaction', params: [em64, { encoding: 'base64', skipPreflight: true }] });
+      if (r.error) throw new Error(r.error.message);
+      aviso(`Swap sent. Agent spent $${total.toFixed(4)} in total.`, 'passou', solscan(r.result).replace('payment proof', 'swap'));
+    } catch (e) {
+      aviso(e.message, 'parou');
+    }
+    b.remove();
+  }
+</script>
+</body>
+</html>
